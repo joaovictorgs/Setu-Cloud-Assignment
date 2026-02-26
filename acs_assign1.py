@@ -2,6 +2,9 @@ import boto3
 import os
 from dotenv import load_dotenv
 
+# Load the .env file
+load_dotenv() 
+
 #retrieving the constants on .env
 KEY_NAME = os.environ['AWS_KEY_NAME']
 SECURITY_GROUP_ID = os.environ['AWS_SECURITY_GROUP_ID']
