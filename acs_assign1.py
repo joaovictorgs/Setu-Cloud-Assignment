@@ -1,15 +1,16 @@
 import boto3
 import os
 from dotenv import load_dotenv
+from datetime import datetime
 
-# load the .env file
+#load the .env file
 load_dotenv() 
 
-# retrieving the constants on .env
+#retrieving the constants on .env
 KEY_NAME = os.environ['AWS_KEY_NAME']
 SECURITY_GROUP_ID = os.environ['AWS_SECURITY_GROUP_ID']
 
-# user data script
+#user data script
 user_data_script = """#!/bin/bash
 yum update -y
 yum install -y httpd
@@ -33,10 +34,11 @@ echo '<h2><strong>Availability Zone:</strong> '$AVAILABILITY_ZONE'</h2>' >> /var
 echo '<h2><strong>Security Groups:</strong> '$SECURITY_GROUPS'</h2>' >> /var/www/html/index.html
 echo '<h2><strong>AMI ID:</strong> '$AMI_ID'</h2>' >> /var/www/html/index.html
 """
-
+#initialize EC2 connections
 ec2_resource = boto3.resource('ec2', region_name='us-east-1')
+ec2_client = boto3.client('ec2', region_name='us-east-1')
 
-
+#create instance
 new_instances = ec2_resource.create_instances(
     ImageId='ami-04752fceda1274920',
     MinCount=1,
@@ -63,8 +65,28 @@ new_instances = ec2_resource.create_instances(
     )
 
 instance = new_instances[0]
-
 instance.wait_until_running()
 instance.reload()
-print("foi")
+print("instance is running")
+
+#usign client to ensure that the status of the instance is ok
+#print(ec2_client.waiter_names) command that is used to see the list of avaible waiters names
+waiter = ec2_client.get_waiter('instance_status_ok')
+waiter.wait(InstanceIds=[instance.id])
 print(f"\nAccess your website at: http://{instance.public_ip_address}")
+
+#creating AMI
+initials = "JV"
+timestamp = datetime.now().strftime("%Y-%m-%d%f") #datetime library was used to get the milesseconds
+ami_name = initials+"-"+timestamp
+
+image = instance.create_image(
+    Name=ami_name,
+    Description=f"AMI - timestamp: {timestamp}"
+)
+
+print("Image created, waiting for it get available")
+
+waiter_image = ec2_client.get_waiter('image_available')
+waiter_image.wait(ImageIds=[image.id])
+print(f"\nAMI created: {ami_name} ({image.id})")
