@@ -158,3 +158,10 @@ website_url = f"http://{bucket_name}.s3-website-us-east-1.amazonaws.com"
 print("S3 website configured")
 print(f"\nEC2 Website: http://{instance.public_ip_address}")
 print(f"S3 Website:  {website_url}")
+
+#adding the url to an file
+filename = "jvsilva-websites.txt"
+with open(filename, 'w') as file:
+    file.write(f"EC2 Website: http://{instance.public_ip_address}\n")
+    file.write(f"S3 Website: {website_url}\n")
+print(f"\nURLs written to {filename}")
