@@ -5,16 +5,45 @@ from datetime import datetime
 import subprocess
 import random    
 import string  
-import json 
+import json
+import argparse
 
 #load the .env file
 load_dotenv() 
+
+#Command line arguments
+parser = argparse.ArgumentParser(description='AWS EC2 and S3 automation script')
+parser.add_argument('--instance-type', 
+                    default='t2.nano', 
+                    help='EC2 instance type (default: t2.nano)')
+parser.add_argument('--ami-id', 
+                    default='ami-04752fceda1274920', 
+                    help='Amazon Linux 2023 AMI ID (default: ami-04752fceda1274920)')
+parser.add_argument('--availability-zone', 
+                    default='us-east-1b', 
+                    help='AWS availability zone (default: us-east-1b)')
+parser.add_argument('--region', 
+                    default='us-east-1', 
+                    help='AWS region (default: us-east-1)')
+parser.add_argument('--instance-name', 
+                    default='test-name', 
+                    help='Instance name (default: test-name)')
+
+args = parser.parse_args()
+print("Starting AWS automation script\n")
+print("COMMAND LINE ARGUMENTS:")
+print(f"Instance Type: {args.instance_type}")
+print(f"AMI ID: {args.ami_id}")
+print(f"Availability Zone: {args.availability_zone}")
+print(f"Region: {args.region}")
+print(f"Instance name: {args.instance_name}")
 
 #retrieving the constants on .env
 KEY_NAME = os.environ['AWS_KEY_NAME']
 KEY_FILE = f"{KEY_NAME}.pem"
 SECURITY_GROUP_ID = os.environ['AWS_SECURITY_GROUP_ID']
 
+print(f"\nConfiguration loaded:")
 print(f"Key Name: {KEY_NAME}")
 print(f"Security Group ID: {SECURITY_GROUP_ID}")
 
@@ -44,35 +73,35 @@ echo '<h2><strong>AMI ID:</strong> '$AMI_ID'</h2>' >> /var/www/html/index.html
 """
 #initialize EC2 and S3 connections
 print("\nInitializing AWS connections")
-ec2_resource = boto3.resource('ec2', region_name='us-east-1')
-ec2_client = boto3.client('ec2', region_name='us-east-1')
+ec2_resource = boto3.resource('ec2', region_name=args.region)
+ec2_client = boto3.client('ec2', region_name=args.region)
 s3_resource = boto3.resource('s3')
 s3_client = boto3.client('s3')
 print("AWS connections established")
 
 #create instance
-print("\nLaunching EC2 instance in us-east-1b")
+print(f"\nLaunching EC2 instance in {args.availability_zone}")
 try:
     new_instances = ec2_resource.create_instances(
-        ImageId='ami-04752fceda1274920',
+        ImageId=args.ami_id,
         MinCount=1,
         MaxCount=1,
-        InstanceType='t2.nano',
+        InstanceType=args.instance_type,
         KeyName= KEY_NAME,
         SecurityGroupIds=[SECURITY_GROUP_ID],
         UserData=user_data_script,
         Placement={
-            'AvailabilityZone': 'us-east-1b'},
+            'AvailabilityZone': args.availability_zone},
         TagSpecifications=[{
             'ResourceType': 'instance',  
             'Tags': [                     
                 {
                     'Key': 'Name',        
-                    'Value': 'TestName' 
+                    'Value': args.instance_name 
                 },
                 {
-                    'Key': 'Test',
-                    'Value': 'se apareceu, a tag ta funcionando'    
+                    'Key': 'assignment',
+                    'Value': 'assignment 1'    
                 }
             ]
         }]
@@ -191,7 +220,7 @@ try:
     bucket_website = s3_resource.BucketWebsite(bucket_name)
     bucket_website.put(WebsiteConfiguration=website_configuration)
 
-    website_url = f"http://{bucket_name}.s3-website-us-east-1.amazonaws.com"
+    website_url = f"http://{bucket_name}.s3-website-{args.region}.amazonaws.com"
 
     print("\nS3 website configured successfully")
     print("WEBSITE URLS:")
