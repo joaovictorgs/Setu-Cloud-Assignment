@@ -15,6 +15,9 @@ KEY_NAME = os.environ['AWS_KEY_NAME']
 KEY_FILE = f"{KEY_NAME}.pem"
 SECURITY_GROUP_ID = os.environ['AWS_SECURITY_GROUP_ID']
 
+print(f"Key Name: {KEY_NAME}")
+print(f"Security Group ID: {SECURITY_GROUP_ID}")
+
 #user data script
 user_data_script = """#!/bin/bash
 yum update -y
@@ -40,12 +43,15 @@ echo '<h2><strong>Security Groups:</strong> '$SECURITY_GROUPS'</h2>' >> /var/www
 echo '<h2><strong>AMI ID:</strong> '$AMI_ID'</h2>' >> /var/www/html/index.html
 """
 #initialize EC2 and S3 connections
+print("\nInitializing AWS connections")
 ec2_resource = boto3.resource('ec2', region_name='us-east-1')
 ec2_client = boto3.client('ec2', region_name='us-east-1')
 s3_resource = boto3.resource('s3')
 s3_client = boto3.client('s3')
+print("AWS connections established")
 
 #create instance
+print("\nLaunching EC2 instance in us-east-1b")
 try:
     new_instances = ec2_resource.create_instances(
         ImageId='ami-04752fceda1274920',
@@ -72,13 +78,17 @@ try:
         }]
         )
 
-    instance = new_instances[0]
+    instance = new_instances[0]    
+    print(f"Instance created: {instance.id}")
+    print("Waiting for instance to be in running state")    
     instance.wait_until_running()
     instance.reload()
     print("instance is running")
+    print(f"Public IP: {instance.public_ip_address}")
 
     #usign client to ensure that the status of the instance is ok
     #print(ec2_client.waiter_names) command that is used to see the list of avaible waiters names
+    print("\nWaiting for instance status checks to pass")
     waiter = ec2_client.get_waiter('instance_status_ok')
     waiter.wait(InstanceIds=[instance.id])
     print(f"\nec2 website instance status ok")
@@ -87,10 +97,12 @@ except Exception as error:
     exit(1)
 
 #creating AMI
+print("\nCreating AMI from instance")
 try:
     initials = "JV"
     timestamp = datetime.now().strftime("%Y-%m-%d%f") #datetime library was used to get the milesseconds
     ami_name = initials+"-"+timestamp
+    print(f"AMI Name: {ami_name}")
 
     image = instance.create_image(
         Name=ami_name,
@@ -107,15 +119,19 @@ except Exception as error:
     exit(1)
 
 #running the subprocess to download the image
+print("\nDownloading setulogo.jpeg from S3")
 try:
     subprocess.run(["curl","-O","https://setuacsresources.s3-eu-west-1.amazonaws.com/setulogo.jpeg"], check=True)
+    print("Image downloaded successfully")
 except Exception as error:
     print(error)
     exit(1)
 
 #creating a bucket
+print("\nCreating S3 bucket")
 random_chars = ''.join(random.choices(string.ascii_lowercase + string.digits, k=6))
 bucket_name = random_chars+"-jvsilva"  
+print(f"Bucket name: {bucket_name}")
 
 try:
  s3_resource.create_bucket(Bucket=bucket_name)
@@ -125,13 +141,16 @@ except Exception as error:
  exit(1)
  
 #managing acess and files to be put on a bucket to be turn into an static website
+print("\nConfiguring S3 bucket for static website hosting")
 try:
-    print("adding the image and the index.html to the bucket")
+    print("Uploading setulogo.jpeg to bucket")
     s3_resource.Object(bucket_name, 'setulogo.jpeg').put(
         Body=open('setulogo.jpeg', 'rb'), 
         ContentType='image/jpeg'
     )
+    print("Image uploaded")
 
+    print("Setting bucket public access and policy")
     s3_client.delete_public_access_block(Bucket=bucket_name)
 
     bucket_policy = {
@@ -144,7 +163,9 @@ try:
         }]
     }
     s3_resource.Bucket(bucket_name).Policy().put(Policy=json.dumps(bucket_policy))
+    print("Bucket policy applied")
 
+    print("Creating index.html")
     html_content = f"""
         <h1>João Victor Godoy da Silva</h1>
         <img src="setulogo.jpeg">
@@ -153,12 +174,15 @@ try:
 
     with open('index.html', 'w') as file:
         file.write(html_content)
-        
+    
+    print("Uploading index.html to bucket")
     s3_resource.Object(bucket_name, 'index.html').put(
         Body=open('index.html', 'rb'),
         ContentType='text/html'
     )
+    print("Index.html uploaded")
 
+    print("Enabling static website hosting")
     website_configuration = {
         'ErrorDocument': {'Key': 'error.html'},
         'IndexDocument': {'Suffix': 'index.html'}
@@ -169,14 +193,16 @@ try:
 
     website_url = f"http://{bucket_name}.s3-website-us-east-1.amazonaws.com"
 
-    print("S3 website configured")
-    print(f"\nEC2 Website: http://{instance.public_ip_address}")
+    print("\nS3 website configured successfully")
+    print("WEBSITE URLS:")
+    print(f"EC2 Website: http://{instance.public_ip_address}")
     print(f"S3 Website:  {website_url}")
 except Exception as error:
     print(error)
     exit(1)
 
 #adding the url to an file
+print("\nWriting URLs to file")
 try:
     filename = "jvsilva-websites.txt"
     with open(filename, 'w') as file:
@@ -188,7 +214,9 @@ except Exception as error:
     exit(1)
 
 #usign the scp monitoring 
+print("\nSTARTING MONITORING SETUP")
 ip_address = instance.public_ip_address
+print(f"Instance IP: {ip_address}")
 
 try:
     # Copy monitoring.sh to instance
@@ -196,29 +224,34 @@ try:
     scp_cmd = f"scp -o StrictHostKeyChecking=no -i {KEY_FILE} monitoring.sh ec2-user@{ip_address}:."
     
     result = subprocess.run(scp_cmd, shell=True)
-    print(f"Return code: {result.returncode}")
+    print(f"SCP return code: {result.returncode}")
     
     if result.returncode != 0:
         raise Exception("SCP failed")
+    
+    print("File copied successfully")
     
     #Make script executable
     print("\nMaking monitoring.sh executable")
     chmod_cmd = f"ssh -o StrictHostKeyChecking=no -i {KEY_FILE} ec2-user@{ip_address} 'chmod 700 monitoring.sh'"
     
     result = subprocess.run(chmod_cmd, shell=True)
-    print(f"Return code: {result.returncode}")
+    print(f"chmod return code: {result.returncode}")
     
     if result.returncode != 0:
         raise Exception("chmod failed")
     
+    print("Permissions set successfully")
+    
     #Execute monitoring script
-    print("\nExecuting monitoring.sh...")
+    print("\nExecuting monitoring.sh on remote instance")
     exec_cmd = f"ssh -o StrictHostKeyChecking=no -i {KEY_FILE} ec2-user@{ip_address} './monitoring.sh'"
     result = subprocess.run(exec_cmd, shell=True)
-    print(f"Return code: {result.returncode}")
+    print(f"Execution return code: {result.returncode}")
     
-    print("\nMonitoring completed")
+    print("\nMONITORING COMPLETED SUCCESSFULLY")
+    print("\nScript execution finished. All resources are ready!")
     
 except Exception as e:
-    print(f"Monitoring error: {e}")
+    print(f"\nMonitoring error: {e}")
     print("EC2 and S3 websites are still functional")
