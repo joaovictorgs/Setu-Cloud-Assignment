@@ -12,6 +12,7 @@ load_dotenv()
 
 #retrieving the constants on .env
 KEY_NAME = os.environ['AWS_KEY_NAME']
+KEY_FILE = f"{KEY_NAME}.pem"
 SECURITY_GROUP_ID = os.environ['AWS_SECURITY_GROUP_ID']
 
 #user data script
@@ -165,3 +166,39 @@ with open(filename, 'w') as file:
     file.write(f"EC2 Website: http://{instance.public_ip_address}\n")
     file.write(f"S3 Website: {website_url}\n")
 print(f"\nURLs written to {filename}")
+
+#usign the scp monitoring 
+ip_address = instance.public_ip_address
+
+try:
+    # Copy monitoring.sh to instance
+    print(f"\nCopying monitoring.sh to instance")
+    scp_cmd = f"scp -o StrictHostKeyChecking=no -i {KEY_FILE} monitoring.sh ec2-user@{ip_address}:."
+    
+    result = subprocess.run(scp_cmd, shell=True)
+    print(f"Return code: {result.returncode}")
+    
+    if result.returncode != 0:
+        raise Exception("SCP failed")
+    
+    #Make script executable
+    print("\nMaking monitoring.sh executable")
+    chmod_cmd = f"ssh -o StrictHostKeyChecking=no -i {KEY_FILE} ec2-user@{ip_address} 'chmod 700 monitoring.sh'"
+    
+    result = subprocess.run(chmod_cmd, shell=True)
+    print(f"Return code: {result.returncode}")
+    
+    if result.returncode != 0:
+        raise Exception("chmod failed")
+    
+    #Execute monitoring script
+    print("\nExecuting monitoring.sh...")
+    exec_cmd = f"ssh -o StrictHostKeyChecking=no -i {KEY_FILE} ec2-user@{ip_address} './monitoring.sh'"
+    result = subprocess.run(exec_cmd, shell=True)
+    print(f"Return code: {result.returncode}")
+    
+    print("\nMonitoring completed")
+    
+except Exception as e:
+    print(f"Monitoring error: {e}")
+    print("EC2 and S3 websites are still functional")
